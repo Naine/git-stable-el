@@ -14,28 +14,25 @@
 %bcond_with                 linkcheck
 %endif
 
-# Settings for Fedora > 29 and EL > 7
-%if 0%{?fedora} > 29 || 0%{?rhel} > 7
-%bcond_with                 python2
+# Settings for Fedora and EL >= 9
+%if 0%{?fedora} || 0%{?rhel} >= 9
+%bcond_without              asciidoctor
 %else
-%bcond_without              python2
-%endif
-
-# Settings for Fedora >= 29 and EL > 7
-%if 0%{?fedora} >= 29 || 0%{?rhel} > 7
-%global gitweb_httpd_conf   gitweb.conf
-%else
-%global gitweb_httpd_conf   git.conf
+%bcond_with                 asciidoctor
 %endif
 
 # Settings for Fedora and EL > 7
 %if 0%{?fedora} || 0%{?rhel} > 7
+%bcond_with                 python2
 %bcond_without              python3
+%global gitweb_httpd_conf   gitweb.conf
 %global use_glibc_langpacks 1
 %global use_perl_generators 1
 %global use_perl_interpreter 1
 %else
+%bcond_without              python2
 %bcond_with                 python3
+%global gitweb_httpd_conf   git.conf
 %global use_glibc_langpacks 0
 %global use_perl_generators 0
 %global use_perl_interpreter 0
@@ -43,19 +40,19 @@
 
 # Settings for Fedora and EL >= 7
 %if 0%{?fedora} || 0%{?rhel} >= 7
+%bcond_without              libsecret
 %global bashcomp_pkgconfig  1
 %global bashcompdir         %(pkg-config --variable=completionsdir bash-completion 2>/dev/null)
 %global bashcomproot        %(dirname %{bashcompdir} 2>/dev/null)
 %global emacs_filesystem    1
-%global libsecret           1
 %global use_new_rpm_filters 1
 %global use_systemd         1
 %else
+%bcond_with                 libsecret
 %global bashcomp_pkgconfig  0
 %global bashcompdir         %{_sysconfdir}/bash_completion.d
 %global bashcomproot        %{bashcompdir}
 %global emacs_filesystem    0
-%global libsecret           0
 %global use_new_rpm_filters 0
 %global use_systemd         0
 %{!?_pkgdocdir: %global _pkgdocdir %{_docdir}/%{name}-%{version}}
@@ -89,7 +86,7 @@
 %endif
 
 Name:           git-stable
-Version:        2.24.3
+Version:        2.28.0
 Release:        1%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
@@ -125,7 +122,13 @@ Patch0:         git-cvsimport-Ignore-cvsps-2.2b1-Branches-output.patch
 %if %{with docs}
 # pod2man is needed to build Git.3pm
 BuildRequires:  %{_bindir}/pod2man
+%if %{with asciidoctor}
+BuildRequires:  docbook5-style-xsl
+BuildRequires:  rubygem-asciidoctor
+%else
 BuildRequires:  asciidoc >= 8.4.1
+%endif
+# endif with asciidoctor
 BuildRequires:  xmlto
 %if %{with linkcheck}
 BuildRequires:  linkchecker
@@ -134,6 +137,7 @@ BuildRequires:  linkchecker
 %endif
 # endif with docs
 BuildRequires:  desktop-file-utils
+BuildRequires:  diffutils
 BuildRequires:  emacs
 BuildRequires:  expat-devel
 BuildRequires:  findutils
@@ -142,14 +146,11 @@ BuildRequires:  gcc
 BuildRequires:  gettext
 BuildRequires:  gnupg2
 BuildRequires:  libcurl-devel
-%if %{libsecret}
-BuildRequires:  libsecret-devel
-%endif
-# endif libsecret
 BuildRequires:  make
 BuildRequires:  openssl-devel
 BuildRequires:  pcre2-devel
 BuildRequires:  perl(Error)
+BuildRequires:  perl(lib)
 BuildRequires:  perl(Test)
 %if %{use_perl_generators}
 BuildRequires:  perl-generators
@@ -205,12 +206,12 @@ BuildRequires:  gnupg
 BuildRequires:  gnupg2-smime
 %endif
 # endif fedora or el > 8
-%if 0%{?fedora} || 0%{?rhel} == 6 || ( 0%{?rhel} >= 7 && ( %{_arch} == ppc64le || %{_arch} == x86_64 ) )
+%if 0%{?fedora} || 0%{?rhel} == 6 || ( 0%{?rhel} >= 7 && ( "%{_arch}" == "ppc64le" || "%{_arch}" == "x86_64" ) )
 BuildRequires:  highlight
 %endif
 # endif fedora, el-6, or el7+ (ppc64le/x86_64)
 BuildRequires:  httpd
-%if 0%{?fedora} && ! ( %{_arch} == i386 || %{_arch} == s390x )
+%if 0%{?fedora} && ! ( "%{_arch}" == "i386" || "%{_arch}" == "s390x" )
 BuildRequires:  jgit
 %endif
 # endif fedora (except i386 and s390x)
@@ -221,12 +222,19 @@ BuildRequires:  perl(CGI::Carp)
 BuildRequires:  perl(CGI::Util)
 BuildRequires:  perl(DBD::SQLite)
 BuildRequires:  perl(Digest::MD5)
+BuildRequires:  perl(Fcntl)
+BuildRequires:  perl(File::Basename)
+BuildRequires:  perl(File::Copy)
+BuildRequires:  perl(File::Find)
+BuildRequires:  perl(filetest)
 BuildRequires:  perl(HTTP::Date)
 BuildRequires:  perl(IO::Pty)
 BuildRequires:  perl(JSON)
 BuildRequires:  perl(JSON::PP)
 BuildRequires:  perl(Mail::Address)
 BuildRequires:  perl(Memoize)
+BuildRequires:  perl(POSIX)
+BuildRequires:  perl(Term::ReadLine)
 BuildRequires:  perl(Test::More)
 BuildRequires:  perl(Time::HiRes)
 %if %{with python2}
@@ -239,7 +247,9 @@ BuildRequires:  python3-devel
 # endif with python3
 BuildRequires:  subversion
 BuildRequires:  subversion-perl
+BuildRequires:  tar
 BuildRequires:  time
+BuildRequires:  zip
 %endif
 # endif with tests
 
@@ -274,6 +284,10 @@ tools for integrating with other SCMs, install the git-all meta-package.
 Summary:        Meta-package to pull in all git tools
 BuildArch:      noarch
 Requires:       git = %{version}-%{release}
+%if %{with libsecret}
+Requires:       git-credential-libsecret = %{version}-%{release}
+%endif
+# endif with libsecret
 %if %{with cvs}
 Requires:       git-cvs = %{version}-%{release}
 %endif
@@ -335,6 +349,16 @@ Provides:       git-core-doc = %{version}-%{release}
 Conflicts:      git-core-doc < %{version}-%{release}
 %description core-doc
 Documentation files for git-core package including man pages.
+
+%if %{with libsecret}
+%package credential-libsecret
+Summary:        Git helper for accessing credentials via libsecret
+BuildRequires:  libsecret-devel
+Requires:       git = %{version}-%{release}
+%description credential-libsecret
+%{summary}.
+%endif
+# endif with libsecret
 
 %if %{with cvs}
 %package cvs
@@ -560,6 +584,10 @@ PYTHON_PATH = %{__python2}
 NO_PYTHON = 1
 %endif
 # endif with python2
+%if %{with asciidoctor}
+USE_ASCIIDOCTOR = 1
+%endif
+# endif with asciidoctor
 htmldir = %{?_pkgdocdir}%{!?_pkgdocdir:%{_docdir}/%{name}-%{version}}
 prefix = %{_prefix}
 perllibdir = %{perl_vendorlib}
@@ -614,10 +642,12 @@ export SOURCE_DATE_EPOCH=$(date -r version +%%s 2>/dev/null)
 
 %make_build -C contrib/contacts/ all
 
-%if %{libsecret}
+%if %{with libsecret}
 %make_build -C contrib/credential/libsecret/
 %endif
-# endif libsecret
+# endif with libsecret
+
+%make_build -C contrib/credential/netrc/
 
 %make_build -C contrib/diff-highlight/
 
@@ -664,11 +694,11 @@ for el in *.el ; do
 done
 popd >/dev/null
 
-%if %{libsecret}
+%if %{with libsecret}
 install -pm 755 contrib/credential/libsecret/git-credential-libsecret \
     %{buildroot}%{gitexecdir}
 %endif
-# endif libsecret
+# endif with libsecret
 install -pm 755 contrib/credential/netrc/git-credential-netrc \
     %{buildroot}%{gitexecdir}
 # temporarily move contrib/credential/netrc aside to prevent it from being
@@ -710,7 +740,7 @@ rm -f %{buildroot}%{gitexecdir}/mergetools/p4merge
 # Remove unneeded git-remote-testsvn so git-svn can be noarch
 rm -f %{buildroot}%{gitexecdir}/git-remote-testsvn
 
-exclude_re="archimport|email|git-(citool|cvs|daemon|gui|instaweb|p4|subtree|svn)|gitk|gitweb|p4merge"
+exclude_re="archimport|email|git-(citool|credential-libsecret|cvs|daemon|gui|instaweb|p4|subtree|svn)|gitk|gitweb|p4merge"
 (find %{buildroot}{%{_bindir},%{_libexecdir}} -type f -o -type l | grep -vE "$exclude_re" | sed -e s@^%{buildroot}@@) > bin-man-doc-files
 (find %{buildroot}{%{_bindir},%{_libexecdir}} -mindepth 1 -type d | grep -vE "$exclude_re" | sed -e 's@^%{buildroot}@%dir @') >> bin-man-doc-files
 (find %{buildroot}%{perl_vendorlib} -type f | sed -e s@^%{buildroot}@@) > perl-git-files
@@ -788,7 +818,7 @@ chmod a-x Documentation/technical/api-index.sh
 find contrib -type f -print0 | xargs -r0 chmod -x
 
 # Split core files
-not_core_re="git-(add--interactive|contacts|credential-(libsecret|netrc)|difftool|filter-branch|instaweb|request-pull|send-mail)|gitweb"
+not_core_re="git-(add--interactive|contacts|credential-netrc|difftool|filter-branch|instaweb|request-pull|send-mail)|gitweb"
 grep -vE "$not_core_re|%{_mandir}" bin-man-doc-files > bin-files-core
 touch man-doc-files-core
 %if %{with docs}
@@ -959,6 +989,13 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 # endif rhel <= 7
 %{_pkgdocdir}/contrib/hooks
 
+%if %{with libsecret}
+%files credential-libsecret
+%defattr(-,root,root)
+%{gitexecdir}/git-credential-libsecret
+%endif
+# endif with libsecret
+
 %if %{with cvs}
 %files cvs
 %{_pkgdocdir}/*git-cvs*.txt
@@ -1059,23 +1096,101 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 %{?with_docs:%{_pkgdocdir}/git-svn.html}
 
 %changelog
-* Thu Jul 23 2020 Chun-Chi Hung <b10102229@gmail.com> - 2.24.3-1
-- Latest upstream
-- Includes fix for CVE-2020-11008
+* Mon Jul 27 2020 Todd Zullinger <tmz@pobox.com> - 2.28.0-1
+- update to 2.28.0
 
-* Wed Apr 15 2020 Carl George <carl@george.computer> - 2.24.2-1
-- Latest upstream
-- Includes fix for CVE-2020-5260
+* Mon Jul 27 2020 Fedora Release Engineering <releng@fedoraproject.org> - 2.28.0-0.3.rc2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
 
-* Mon Feb 10 2020 Carl George <carl@george.computer> - 2.24.1-6
-- Port from Fedora to IUS
-- Disable tests that fail as root
+* Wed Jul 22 2020 Todd Zullinger <tmz@pobox.com> - 2.28.0-0.2.rc2
+- update to 2.28.0-rc2
 
-* Tue Jan 14 2020 Tom Stellard <tstellar@redhat.com> - 2.24.1-4
+* Sat Jul 18 2020 Todd Zullinger <tmz@pobox.com> - 2.28.0-0.1.rc1
+- update to 2.28.0-rc1
+
+* Thu Jul 09 2020 Todd Zullinger <tmz@pobox.com> - 2.28.0-0.0.rc0
+- update to 2.28.0-rc0
+
+* Fri Jun 26 2020 Jitka Plesnikova <jplesnik@redhat.com> - 2.27.0-1.2
+- Perl 5.32 re-rebuild of bootstrapped packages
+
+* Tue Jun 23 2020 Jitka Plesnikova <jplesnik@redhat.com> - 2.27.0-1.1
+- Perl 5.32 rebuild
+
+* Mon Jun 01 2020 Todd Zullinger <tmz@pobox.com> - 2.27.0-1
+- update to 2.27.0
+
+* Tue May 26 2020 Todd Zullinger <tmz@pobox.com> - 2.27.0-0.2.rc2
+- update to 2.27.0-rc2
+
+* Thu May 21 2020 Todd Zullinger <tmz@pobox.com> - 2.27.0-0.1.rc1
+- update to 2.27.0-rc1
+
+* Thu May 21 2020 Merlin Mathesius <mmathesi@redhat.com> - 2.26.2-2
+- Minor conditional fixes for ELN
+
+* Mon Apr 20 2020 Todd Zullinger <tmz@pobox.com> - 2.26.2-1
+- update to 2.26.2 (CVE-2020-11008)
+
+* Tue Apr 14 2020 Todd Zullinger <tmz@pobox.com> - 2.26.1-1
+- update to 2.26.1 (CVE-2020-5260)
+
+* Sat Apr 04 2020 Todd Zullinger <tmz@pobox.com> - 2.26.0-2
+- fix issue with fast-forward rebases when rebase.abbreviateCommands is set
+- fix/quiet rpmlint issues from libsecret split
+
+* Thu Apr 02 2020 Björn Esser <besser82@fedoraproject.org> - 2.26.0-1.1
+- Fix string quoting for rpm >= 4.16
+
+* Sun Mar 22 2020 Todd Zullinger <tmz@pobox.com> - 2.26.0-1
+- update to 2.26.0
+
+* Mon Mar 16 2020 Todd Zullinger <tmz@pobox.com> - 2.26.0-0.3.rc2
+- update to 2.26.0-rc2
+
+* Thu Mar 12 2020 Todd Zullinger <tmz@pobox.com> - 2.26.0-0.2.rc1
+- remove s390x gcc10 workaround (#1799408)
+
+* Tue Mar 10 2020 Todd Zullinger <tmz@pobox.com> - 2.26.0-0.1.rc1
+- update to 2.26.0-rc1
+- adjust make test options
+- add missing build deps for tests
+
+* Fri Mar 06 2020 Todd Zullinger <tmz@pobox.com> - 2.26.0-0.0.rc0
+- update to 2.26.0-rc0
+
+* Wed Feb 26 2020 Todd Zullinger <tmz@pobox.com> - 2.25.1-4
+- use Asciidoctor to build documentation when possible
+
+* Sat Feb 22 2020 Todd Zullinger <tmz@pobox.com> - 2.25.1-3
+- work around issue on s390x with gcc10 (#1799408)
+
+* Wed Feb 19 2020 Todd Zullinger <tmz@pobox.com> - 2.25.1-2
+- split libsecret credential helper into a subpackage (#1804741)
+- consolidate macros for Fedora/EPEL
+- remove unneeded gnome-keyring obsoletes
+
+* Mon Feb 17 2020 Todd Zullinger <tmz@pobox.com> - 2.25.1-1
+- update to 2.25.1
+
+* Tue Jan 28 2020 Fedora Release Engineering <releng@fedoraproject.org> - 2.25.0-2.1
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
+
+* Tue Jan 14 2020 Tom Stellard <tstellar@redhat.com> - 2.25.0-2
 - Use make_build macro when running tests
 
-* Fri Jan 03 2020 Todd Zullinger <tmz@pobox.com> - 2.24.1-3
+* Tue Jan 14 2020 Todd Zullinger <tmz@pobox.com> - 2.25.0-1
+- update to 2.25.0
+
+* Thu Jan 09 2020 Todd Zullinger <tmz@pobox.com> - 2.25.0-0.2.rc2
+- update to 2.25.0-rc2
+
+* Fri Jan 03 2020 Todd Zullinger <tmz@pobox.com> - 2.25.0-0.1.rc1
+- update to 2.25.0-rc1
 - only add highlight test BR for ppc64le/x86_64 on EL7+
+
+* Wed Dec 25 2019 Todd Zullinger <tmz@pobox.com> - 2.25.0-0.0.rc0
+- update to 2.25.0-rc0
 
 * Thu Dec 19 2019 Todd Zullinger <tmz@pobox.com> - 2.24.1-2
 - fix git-daemon systemd scriptlets (#1785088)

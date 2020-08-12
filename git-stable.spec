@@ -88,7 +88,7 @@
 %global build_ldflags       -Wl,-z,relro -Wl,-z,now
 %endif
 
-Name:           git224
+Name:           git-stable
 Version:        2.24.3
 Release:        1%{?dist}
 Summary:        Fast Version Control System

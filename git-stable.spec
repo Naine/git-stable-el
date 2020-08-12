@@ -355,6 +355,9 @@ Documentation files for git-core package including man pages.
 Summary:        Git helper for accessing credentials via libsecret
 BuildRequires:  libsecret-devel
 Requires:       git = %{version}-%{release}
+# safe replacement
+Provides:       git-credential-libsecret = %{version}-%{release}
+Conflicts:      git-credential-libsecret < %{version}-%{release}
 %description credential-libsecret
 %{summary}.
 %endif

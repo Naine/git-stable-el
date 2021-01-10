@@ -7,11 +7,12 @@ addFilter("git-subtree.* spelling-error %description .* (subdirectory|subproject
 # git-core-doc requires git-core, which provides the symlink target
 addFilter("git(-core-doc)?\..*: W: dangling-relative-symlink /usr/share/doc/git/contrib/hooks ../../../git-core/contrib/hooks")
 
-# git requires git-core, which provides the symlink target
-addFilter("git\..*: W: dangling-relative-symlink /usr/libexec/git-core/git-difftool ../../bin/git")
-
 # git-gui requires git, which provides the git binary
 addFilter("git-gui.noarch: W: desktopfile-without-binary /usr/share/applications/git-gui.desktop git")
+
+# ignore no binary warning for main git package; making it noarch isn't trivial
+# since we have arch-specific subpackages
+addFilter("git\..*: E: no-binary$")
 
 # ignore no doc/manpage warnings where we don't expect any documentation
 addFilter("git-(all|core|credential-libsecret)\..*: W: no-documentation")

@@ -93,7 +93,7 @@
 %endif
 
 Name:           git-stable
-Version:        2.29.2
+Version:        2.30.0
 Release:        1%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
@@ -149,6 +149,11 @@ BuildRequires:  diffutils
 BuildRequires:  emacs-common
 %endif
 # endif emacs-common
+%if 0%{?rhel} == 7
+# Require epel-rpm-macros for the %%build_cflags and %%build_ldflags macros
+BuildRequires:  epel-rpm-macros
+%endif
+# endif rhel == 7
 BuildRequires:  expat-devel
 BuildRequires:  findutils
 BuildRequires:  gawk
@@ -839,7 +844,7 @@ chmod a-x Documentation/technical/api-index.sh
 find contrib -type f -print0 | xargs -r0 chmod -x
 
 # Split core files
-not_core_re="git-(add--interactive|contacts|credential-netrc|difftool|filter-branch|instaweb|request-pull|send-mail)|gitweb"
+not_core_re="git-(add--interactive|contacts|credential-netrc|filter-branch|instaweb|request-pull|send-mail)|gitweb"
 grep -vE "$not_core_re|%{_mandir}" bin-man-doc-files > bin-files-core
 touch man-doc-files-core
 %if %{with docs}
@@ -1117,6 +1122,28 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 %{?with_docs:%{_pkgdocdir}/git-svn.html}
 
 %changelog
+* Mon Dec 28 2020 Todd Zullinger <tmz@pobox.com> - 2.30.0-1
+- update to 2.30.0
+
+* Wed Dec 23 2020 Todd Zullinger <tmz@pobox.com> - 2.30.0-0.2.rc2
+- update to 2.30.0-rc2
+
+* Sat Dec 19 2020 Todd Zullinger <tmz@pobox.com> - 2.30.0-0.1.rc1
+- update to 2.30.0-rc1
+
+* Mon Dec 14 2020 Todd Zullinger <tmz@pobox.com> - 2.30.0-0.0.rc0
+- update to 2.30.0-rc0
+
+* Sun Dec 06 2020 Todd Zullinger <tmz@pobox.com> - 2.29.2-4
+- move git-difftool to git-core, it does not require perl
+
+* Wed Nov 25 2020 Todd Zullinger <tmz@pobox.com> - 2.29.2-3
+- apply upstream patch to resolve git fast-import memory leak (#1900335)
+- add epel-rpm-macros BuildRequires on EL-7 (#1872865)
+
+* Sat Nov 07 2020 Todd Zullinger <tmz@pobox.com> - 2.29.2-2
+- apply upstream patch to resolve git log segfault (#1791810)
+
 * Thu Oct 29 2020 Todd Zullinger <tmz@pobox.com> - 2.29.2-1
 - update to 2.29.2
 

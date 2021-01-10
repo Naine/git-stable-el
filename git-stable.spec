@@ -149,11 +149,11 @@ BuildRequires:  diffutils
 BuildRequires:  emacs-common
 %endif
 # endif emacs-common
-%if 0%{?rhel} == 7
+%if 0%{?rhel}
 # Require epel-rpm-macros for the %%build_cflags and %%build_ldflags macros
 BuildRequires:  epel-rpm-macros
 %endif
-# endif rhel == 7
+# endif rhel
 BuildRequires:  expat-devel
 BuildRequires:  findutils
 BuildRequires:  gawk

@@ -93,8 +93,8 @@
 %endif
 
 Name:           git-stable
-Version:        2.30.0
-Release:        1%{?dist}
+Version:        2.30.1
+Release:        2%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
 URL:            https://git-scm.com/
@@ -313,6 +313,7 @@ Requires:       git-credential-libsecret = %{version}-%{release}
 Requires:       git-cvs = %{version}-%{release}
 %endif
 # endif with cvs
+Requires:       git-daemon = %{version}-%{release}
 Requires:       git-email = %{version}-%{release}
 Requires:       git-gui = %{version}-%{release}
 %if %{with p4}
@@ -484,10 +485,15 @@ Summary:        Repository browser in gitweb
 BuildArch:      noarch
 Requires:       git = %{version}-%{release}
 Requires:       gitweb = %{version}-%{release}
+%if 0%{?rhel} >= 9
+Requires:       httpd
+%else
 Requires:       lighttpd
+%endif
 # safe replacement
 Provides:       git-instaweb = %{version}-%{release}
 Conflicts:      git-instaweb < %{version}-%{release}
+
 %description instaweb
 A simple script to set up gitweb and a web server for browsing the local
 repository.
@@ -921,16 +927,6 @@ GIT_SKIP_TESTS="$GIT_SKIP_TESTS t9115"
 %endif
 # endif %%{power64}
 
-%ifarch s390x
-# Skip tests which fail on s390x
-#
-# t7812-grep-icase-non-ascii's "PCRE v2: grep non-ASCII from invalid UTF-8
-# data" test fails on big-endian arches.  This is known upstream and will
-# hopefully be resolved soon (2019/10/24, tmz)
-GIT_SKIP_TESTS="$GIT_SKIP_TESTS t7812.11"
-%endif
-# endif s390x
-
 export GIT_SKIP_TESTS
 
 # Set LANG so various UTF-8 tests are run
@@ -1122,6 +1118,21 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 %{?with_docs:%{_pkgdocdir}/git-svn.html}
 
 %changelog
+* Thu Feb 18 2021 Ondřej Pohořelský <opohorel@redhat.com - 2.30.1-2
+- include git-daemon in git-all meta-package
+
+* Thu Feb 18 2021 Todd Zullinger <tmz@pobox.com>
+- re-enable t7812-grep-icase-non-ascii on s390x
+
+* Tue Feb 09 2021 Todd Zullinger <tmz@pobox.com> - 2.30.1-1
+- update to 2.30.1
+
+* Mon Feb 08 2021 Ondřej Pohořelský <opohorel@redhat.com> - 2.30.0-2
+- add rhel 9 conditional to require httpd instead of lighttpd in git-instaweb
+
+* Tue Jan 26 2021 Fedora Release Engineering <releng@fedoraproject.org> - 2.30.0-1.1
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
+
 * Mon Dec 28 2020 Todd Zullinger <tmz@pobox.com> - 2.30.0-1
 - update to 2.30.0
 

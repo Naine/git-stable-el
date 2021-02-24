@@ -94,7 +94,7 @@
 
 Name:           git-stable
 Version:        2.30.1
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
 URL:            https://git-scm.com/
@@ -287,6 +287,18 @@ Obsoletes:      emacs-git < %{?epoch:%{epoch}:}%{version}-%{release}
 %endif
 # endif without emacs
 
+# Obsolete git-cvs if it's disabled
+%if %{without cvs}
+Obsoletes:      git-cvs < %{?epoch:%{epoch}:}%{version}-%{release}
+%endif
+# endif without cvs
+
+# Obsolete git-p4 if it's disabled
+%if %{without p4}
+Obsoletes:      git-p4 < %{?epoch:%{epoch}:}%{version}-%{release}
+%endif
+# endif without p4
+
 # safe replacement
 Provides:       git = %{version}-%{release}
 Provides:       git%{?_isa} = %{version}-%{release}
@@ -438,6 +450,7 @@ Summary:        Git version control system support for Emacs
 Requires:       git = %{version}-%{release}
 BuildArch:      noarch
 Requires:       emacs(bin) >= %{_emacs_version}
+Obsoletes:      emacs-git-el < 2.18.0-0.0
 Provides:       emacs-git-el = %{version}-%{release}
 # safe replacement
 Provides:       emacs-git = %{version}-%{release}
@@ -1118,6 +1131,9 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 %{?with_docs:%{_pkgdocdir}/git-svn.html}
 
 %changelog
+* Wed Feb 24 2021 Nathan Williams <nathan@sskn.life> - 2.30.1-3
+- restore obsoletes for disabled packages
+
 * Thu Feb 18 2021 Ondřej Pohořelský <opohorel@redhat.com - 2.30.1-2
 - include git-daemon in git-all meta-package
 

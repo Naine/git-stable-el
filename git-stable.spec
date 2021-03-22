@@ -93,8 +93,8 @@
 %endif
 
 Name:           git-stable
-Version:        2.30.1
-Release:        3%{?dist}
+Version:        2.31.0
+Release:        1%{?rcrev}%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
 URL:            https://git-scm.com/
@@ -110,7 +110,7 @@ Source1:        https://www.kernel.org/pub/software/scm/git/git-%{version}.tar.s
 #
 # https://git.kernel.org/cgit/git/git.git/tag/?h=junio-gpg-pub
 # https://git.kernel.org/cgit/git/git.git/blob/?h=junio-gpg-pub&id=7214aea37915ee2c4f6369eb9dea520aec7d855b
-Source9:        gpgkey-junio.asc
+Source2:        gpgkey-junio.asc
 
 # Local sources begin at 10 to allow for additional future upstream sources
 Source11:       git.xinetd.in
@@ -149,11 +149,12 @@ BuildRequires:  diffutils
 BuildRequires:  emacs-common
 %endif
 # endif emacs-common
-%if 0%{?rhel}
-# Require epel-rpm-macros for the %%build_cflags and %%build_ldflags macros
+%if 0%{?rhel} && 0%{?rhel} < 9
+# Require epel-rpm-macros for the %%gpgverify macro on EL-7/EL-8, and
+# %%build_cflags & %%build_ldflags on EL-7.
 BuildRequires:  epel-rpm-macros
 %endif
-# endif rhel
+# endif rhel < 9
 BuildRequires:  expat-devel
 BuildRequires:  findutils
 BuildRequires:  gawk
@@ -189,6 +190,7 @@ BuildRequires:  systemd
 # endif use_systemd
 BuildRequires:  tcl
 BuildRequires:  tk
+BuildRequires:  xz
 BuildRequires:  zlib-devel >= 1.2
 
 %if %{with tests}
@@ -577,16 +579,8 @@ Conflicts:      git-svn < %{version}-%{release}
 
 %prep
 # Verify GPG signatures
-gpghome="$(mktemp -qd)" # Ensure we don't use any existing gpg keyrings
-# Convert the ascii-armored key to binary
-# (use --yes to ensure an existing dearmored key is overwritten)
-gpg2 --homedir "$gpghome" --dearmor --quiet --yes %{SOURCE9}
-xz -dc %{SOURCE0} | # Upstream signs the uncompressed tarballs
-    gpgv2 --homedir "$gpghome" --quiet --keyring %{SOURCE9}.gpg %{SOURCE1} -
-rm -rf "$gpghome" # Cleanup tmp gpg home dir
+xz -dc '%{SOURCE0}' | %{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data=-
 
-# Ensure a blank line follows autosetup, el6 chokes otherwise
-# https://bugzilla.redhat.com/1310704
 %autosetup -p1 -n git-%{version}
 
 # Install print-failed-test-output script
@@ -1131,8 +1125,24 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 %{?with_docs:%{_pkgdocdir}/git-svn.html}
 
 %changelog
-* Wed Feb 24 2021 Nathan Williams <nathan@sskn.life> - 2.30.1-3
-- restore obsoletes for disabled packages
+* Mon Mar 15 2021 Todd Zullinger <tmz@pobox.com> - 2.31.0-1
+- update to 2.31.0
+
+* Tue Mar 09 2021 Todd Zullinger <tmz@pobox.com> - 2.31.0-0.2.rc2
+- update to 2.31.0-rc2
+
+* Wed Mar 03 2021 Todd Zullinger <tmz@pobox.com> - 2.31.0-0.1.rc1
+- update to 2.31.0-rc1
+
+* Tue Mar 02 2021 Todd Zullinger <tmz@pobox.com> - 2.31.0-0.0.rc0
+- update to 2.31.0-rc0
+
+* Tue Mar 02 2021 Todd Zullinger <tmz@pobox.com> - 2.30.1-3
+- use %%{gpgverify} macro to verify tarball signature
+
+* Tue Mar 02 2021 Zbigniew Jędrzejewski-Szmek <zbyszek@in.waw.pl> - 2.30.1-2.1
+- Rebuilt for updated systemd-rpm-macros
+  See https://pagure.io/fesco/issue/2583.
 
 * Thu Feb 18 2021 Ondřej Pohořelský <opohorel@redhat.com - 2.30.1-2
 - include git-daemon in git-all meta-package

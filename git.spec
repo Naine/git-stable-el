@@ -47,8 +47,22 @@
 
 # Settings for Fedora and EL >= 7
 %if 0%{?fedora} || 0%{?rhel} >= 7
+%bcond_without              libsecret
+%global bashcomp_pkgconfig  1
 %global bashcompdir         %(pkg-config --variable=completionsdir bash-completion 2>/dev/null)
 %global bashcomproot        %(dirname %{bashcompdir} 2>/dev/null)
+%global emacs_filesystem    1
+%global use_new_rpm_filters 1
+%global use_systemd         1
+%else
+%bcond_with                 libsecret
+%global bashcomp_pkgconfig  0
+%global bashcompdir         %{_sysconfdir}/bash_completion.d
+%global bashcomproot        %{bashcompdir}
+%global emacs_filesystem    0
+%global use_new_rpm_filters 0
+%global use_systemd         0
+%{!?_pkgdocdir: %global _pkgdocdir %{_docdir}/%{name}-%{version}}
 %endif
 
 # Allow cvs subpackage to be toggled via --with/--without
@@ -58,9 +72,6 @@
 %else
 %bcond_without              cvs
 %endif
-
-# Allow credential-libsecret subpackage to be toggled via --with/--without
-%bcond_without              libsecret
 
 # Allow p4 subpackage to be toggled via --with/--without
 # Disable by default if we lack python2 or python3 support
@@ -73,6 +84,12 @@
 # Hardening flags for EL-7
 %if 0%{?rhel} == 7
 %global _hardened_build     1
+%endif
+
+# Hardening flags for EL-6
+%if 0%{?rhel} == 6
+%global build_cflags        %{build_cflags} -fPIC -pie
+%global build_ldflags       -Wl,-z,relro -Wl,-z,now
 %endif
 
 # Define for release candidates
@@ -166,10 +183,16 @@ BuildRequires:  perl-interpreter
 BuildRequires:  perl
 %endif
 # endif use_perl_interpreter
+%if %{bashcomp_pkgconfig}
 BuildRequires:  pkgconfig(bash-completion)
+%endif
+# endif bashcomp_pkgconfig
 BuildRequires:  sed
+%if %{use_systemd}
 # For macros
 BuildRequires:  systemd
+%endif
+# endif use_systemd
 BuildRequires:  tcl
 BuildRequires:  tk
 BuildRequires:  xz
@@ -201,10 +224,10 @@ BuildRequires:  glibc-langpack-is
 BuildRequires:  gnupg2-smime
 %endif
 # endif fedora or el >= 9
-%if 0%{?fedora} || ( 0%{?rhel} >= 7 && ( "%{_arch}" == "ppc64le" || "%{_arch}" == "x86_64" ) )
+%if 0%{?fedora} || 0%{?rhel} == 6 || ( 0%{?rhel} >= 7 && ( "%{_arch}" == "ppc64le" || "%{_arch}" == "x86_64" ) )
 BuildRequires:  highlight
 %endif
-# endif fedora or el7+ (ppc64le/x86_64)
+# endif fedora, el-6, or el7+ (ppc64le/x86_64)
 BuildRequires:  httpd
 %if 0%{?fedora} && ! ( 0%{?fedora} >= 35 || "%{_arch}" == "i386" || "%{_arch}" == "s390x" )
 BuildRequires:  jgit
@@ -257,10 +280,10 @@ Requires:       perl(Term::ReadKey)
 # endif ! defined perl_bootstrap
 Requires:       perl-Git = %{version}-%{release}
 
-%if %{with emacs} && %{defined _emacs_version}
+%if %{with emacs} && %{emacs_filesystem} && %{defined _emacs_version}
 Requires:       emacs-filesystem >= %{_emacs_version}
 %endif
-# endif with emacs && defined _emacs_version
+# endif with emacs && emacs_filesystem
 
 # Obsolete emacs-git if it's disabled
 %if %{without emacs}
@@ -317,6 +340,10 @@ Requires:       perl-Git = %{version}-%{release}
 Requires:       perl(Term::ReadKey)
 %endif
 # endif ! defined perl_bootstrap
+%if %{with emacs} && ! %{emacs_filesystem}
+Requires:       emacs-git = %{version}-%{release}
+%endif
+# endif with emacs && ! emacs_filesystem
 %description all
 Git is a fast, scalable, distributed revision control system with an
 unusually rich command set that provides both high-level operations
@@ -372,10 +399,15 @@ Requires:       perl(DBD::SQLite)
 %package daemon
 Summary:        Git protocol daemon
 Requires:       git-core = %{version}-%{release}
+%if %{use_systemd}
 Requires:       systemd
 Requires(post): systemd
 Requires(preun):  systemd
 Requires(postun): systemd
+%else
+Requires:       xinetd
+%endif
+# endif use_systemd
 %description daemon
 The git daemon for supporting git:// access to git repositories
 
@@ -387,6 +419,19 @@ Requires:       perl(Authen::SASL)
 Requires:       perl(Net::SMTP::SSL)
 %description email
 %{summary}.
+
+%if %{with emacs} && ! %{emacs_filesystem}
+%package -n emacs-git
+Summary:        Git version control system support for Emacs
+Requires:       git = %{version}-%{release}
+BuildArch:      noarch
+Requires:       emacs(bin) >= %{_emacs_version}
+Obsoletes:      emacs-git-el < 2.18.0-0.0
+Provides:       emacs-git-el = %{version}-%{release}
+%description -n emacs-git
+%{summary}.
+%endif
+# endif with emacs && ! emacs_filesystem
 
 %package -n gitk
 Summary:        Git repository browser
@@ -545,12 +590,24 @@ EOF
 
 # Filter bogus perl requires
 # packed-refs comes from a comment in contrib/hooks/update-paranoid
+%if %{use_new_rpm_filters}
 %{?perl_default_filter}
 %global __requires_exclude %{?__requires_exclude:%__requires_exclude|}perl\\(packed-refs\\)
 %if ! %{defined perl_bootstrap}
 %global __requires_exclude %{?__requires_exclude:%__requires_exclude|}perl\\(Term::ReadKey\\)
 %endif
 # endif ! defined perl_bootstrap
+%else
+cat << \EOF > %{name}-req
+#!/bin/sh
+%{__perl_requires} $* |\
+sed -e '/perl(packed-refs)/d'
+EOF
+
+%global __perl_requires %{_builddir}/%{name}-%{version}%{?rcrev}/%{name}-req
+chmod +x %{__perl_requires}
+%endif
+# endif use_new_rpm_filters
 
 # Remove Git::LoadCPAN to ensure we use only system perl modules.  This also
 # allows the dependencies to be automatically processed by rpm.
@@ -690,11 +747,20 @@ rm -rf %{buildroot}%{_mandir}
 # endif with docs
 
 mkdir -p %{buildroot}%{_localstatedir}/lib/git
+%if %{use_systemd}
 install -Dp -m 0644 %{SOURCE16} %{buildroot}%{_unitdir}/git.socket
 perl -p \
     -e "s|\@GITEXECDIR\@|%{gitexecdir}|g;" \
     -e "s|\@BASE_PATH\@|%{_localstatedir}/lib/git|g;" \
     %{SOURCE15} > %{buildroot}%{_unitdir}/git@.service
+%else
+mkdir -p %{buildroot}%{_sysconfdir}/xinetd.d
+perl -p \
+    -e "s|\@GITEXECDIR\@|%{gitexecdir}|g;" \
+    -e "s|\@BASE_PATH\@|%{_localstatedir}/lib/git|g;" \
+    %{SOURCE11} > %{buildroot}%{_sysconfdir}/xinetd.d/git
+%endif
+# endif use_systemd
 
 # Setup bash completion
 install -Dpm 644 contrib/completion/git-completion.bash %{buildroot}%{bashcompdir}/git
@@ -854,6 +920,7 @@ mv netrc contrib/credential/
 # Clean up test dir
 rmdir --ignore-fail-on-non-empty "$testdir"
 
+%if %{use_systemd}
 %post daemon
 %systemd_post git.socket
 
@@ -862,12 +929,14 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 
 %postun daemon
 %systemd_postun_with_restart git.socket
+%endif
+# endif use_systemd
 
 %files -f bin-man-doc-git-files
-%if %{with emacs}
+%if %{with emacs} && %{emacs_filesystem}
 %{elispdir}
 %endif
-# endif with emacs
+# endif with emacs && emacs_filesystem
 %{_datadir}/git-core/contrib/diff-highlight
 %{_datadir}/git-core/contrib/hooks/multimail
 %{_datadir}/git-core/contrib/hooks/update-paranoid
@@ -921,12 +990,24 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 
 %files daemon
 %{_pkgdocdir}/git-daemon*.txt
+%if %{use_systemd}
 %{_unitdir}/git.socket
 %{_unitdir}/git@.service
+%else
+%config(noreplace)%{_sysconfdir}/xinetd.d/git
+%endif
+# endif use_systemd
 %{gitexecdir}/git-daemon
 %{_localstatedir}/lib/git
 %{?with_docs:%{_mandir}/man1/git-daemon*.1*}
 %{?with_docs:%{_pkgdocdir}/git-daemon*.html}
+
+%if %{with emacs} && ! %{emacs_filesystem}
+%files -n emacs-git
+%{_pkgdocdir}/contrib/emacs/README
+%{elispdir}
+%endif
+# endif with emacs && ! emacs_filesystem
 
 %files email
 %{_pkgdocdir}/*email*.txt

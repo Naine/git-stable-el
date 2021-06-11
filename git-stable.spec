@@ -92,14 +92,17 @@
 %global build_ldflags       -Wl,-z,relro -Wl,-z,now
 %endif
 
+# Define for release candidates
+#global rcrev   .rc0
+
 Name:           git-stable
 Version:        2.32.0
 Release:        1%{?rcrev}%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
 URL:            https://git-scm.com/
-Source0:        https://www.kernel.org/pub/software/scm/git/git-%{version}.tar.xz
-Source1:        https://www.kernel.org/pub/software/scm/git/git-%{version}.tar.sign
+Source0:        https://www.kernel.org/pub/software/scm/git/%{?rcrev:testing/}git-%{version}%{?rcrev}.tar.xz
+Source1:        https://www.kernel.org/pub/software/scm/git/%{?rcrev:testing/}git-%{version}%{?rcrev}.tar.sign
 
 # Junio C Hamano's key is used to sign git releases, it can be found in the
 # junio-gpg-pub tag within git.
@@ -588,7 +591,7 @@ Conflicts:      git-svn < %{version}-%{release}
 # Verify GPG signatures
 xz -dc '%{SOURCE0}' | %{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data=-
 
-%autosetup -p1 -n git-%{version}
+%autosetup -p1 -n git-%{version}%{?rcrev}
 
 # Install print-failed-test-output script
 install -p -m 755 %{SOURCE99} print-failed-test-output
@@ -660,7 +663,7 @@ cat << \EOF > %{name}-req
 sed -e '/perl(packed-refs)/d'
 EOF
 
-%global __perl_requires %{_builddir}/git-%{version}/%{name}-req
+%global __perl_requires %{_builddir}/git-%{version}%{?rcrev}/%{name}-req
 chmod +x %{__perl_requires}
 %endif
 # endif use_new_rpm_filters

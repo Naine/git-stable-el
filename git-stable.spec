@@ -28,8 +28,8 @@
 %bcond_with                 asciidoctor
 %endif
 
-# Settings for Fedora and EL > 7
-%if 0%{?fedora} || 0%{?rhel} > 7
+# Settings for Fedora and EL >= 8
+%if 0%{?fedora} || 0%{?rhel} >= 8
 %bcond_with                 python2
 %bcond_without              python3
 %global gitweb_httpd_conf   gitweb.conf
@@ -66,19 +66,19 @@
 %endif
 
 # Allow cvs subpackage to be toggled via --with/--without
-# Disable cvs subpackage by default on EL > 7
-%if 0%{?rhel} > 7
+# Disable cvs subpackage by default on EL >= 8
+%if 0%{?rhel} >= 8
 %bcond_with                 cvs
 %else
 %bcond_without              cvs
 %endif
 
 # Allow p4 subpackage to be toggled via --with/--without
-# Disable by default if we lack python2 support
-%if %{without python2}
-%bcond_with                 p4
-%else
+# Disable by default if we lack python2 or python3 support
+%if %{with python2} || %{with python3}
 %bcond_without              p4
+%else
+%bcond_with                 p4
 %endif
 
 # Hardening flags for EL-7
@@ -93,7 +93,7 @@
 %endif
 
 Name:           git-stable
-Version:        2.31.0
+Version:        2.32.0
 Release:        1%{?rcrev}%{?dist}
 Summary:        Fast Version Control System
 License:        GPLv2
@@ -136,6 +136,7 @@ BuildRequires:  rubygem-asciidoctor
 BuildRequires:  asciidoc >= 8.4.1
 %endif
 # endif with asciidoctor
+BuildRequires:  perl(File::Compare)
 BuildRequires:  xmlto
 %if %{with linkcheck}
 BuildRequires:  linkchecker
@@ -143,6 +144,7 @@ BuildRequires:  linkchecker
 # endif with linkcheck
 %endif
 # endif with docs
+BuildRequires:  coreutils
 BuildRequires:  desktop-file-utils
 BuildRequires:  diffutils
 %if %{with emacs}
@@ -196,7 +198,7 @@ BuildRequires:  zlib-devel >= 1.2
 %if %{with tests}
 # Test suite requirements
 BuildRequires:  acl
-%if 0%{?fedora} >= 27 || 0%{?rhel} > 7
+%if 0%{?fedora} || 0%{?rhel} >= 8
 # Needed by t5540-http-push-webdav.sh
 BuildRequires: apr-util-bdb
 %endif
@@ -215,20 +217,16 @@ BuildRequires:  glibc-langpack-en
 BuildRequires:  glibc-langpack-is
 %endif
 # endif use_glibc_langpacks
-%if 0%{?fedora} && 0%{?fedora} < 30
-BuildRequires:  gnupg
-%endif
-# endif fedora < 30
-%if 0%{?fedora} || 0%{?rhel} > 8
+%if 0%{?fedora} || 0%{?rhel} >= 9
 BuildRequires:  gnupg2-smime
 %endif
-# endif fedora or el > 8
+# endif fedora or el >= 9
 %if 0%{?fedora} || 0%{?rhel} == 6 || ( 0%{?rhel} >= 7 && ( "%{_arch}" == "ppc64le" || "%{_arch}" == "x86_64" ) )
 BuildRequires:  highlight
 %endif
 # endif fedora, el-6, or el7+ (ppc64le/x86_64)
 BuildRequires:  httpd
-%if 0%{?fedora} && ! ( "%{_arch}" == "i386" || "%{_arch}" == "s390x" )
+%if 0%{?fedora} && ! ( 0%{?fedora} >= 35 || "%{_arch}" == "i386" || "%{_arch}" == "s390x" )
 BuildRequires:  jgit
 %endif
 # endif fedora (except i386 and s390x)
@@ -254,12 +252,13 @@ BuildRequires:  perl(POSIX)
 BuildRequires:  perl(Term::ReadLine)
 BuildRequires:  perl(Test::More)
 BuildRequires:  perl(Time::HiRes)
+%if %{with python3}
+BuildRequires:  python3-devel
+%else
 %if %{with python2}
 BuildRequires:  python2-devel
 %endif
 # endif with python2
-%if %{with python3}
-BuildRequires:  python3-devel
 %endif
 # endif with python3
 BuildRequires:  subversion
@@ -517,7 +516,15 @@ repository.
 %package p4
 Summary:        Git tools for working with Perforce depots
 BuildArch:      noarch
+%if %{with python3}
+BuildRequires:  python3-devel
+%else
+%if %{with python2}
 BuildRequires:  python2-devel
+%endif
+# endif with python2
+%endif
+# endif with python3
 Requires:       git = %{version}-%{release}
 # safe replacement
 Provides:       git-p4 = %{version}-%{release}
@@ -608,23 +615,24 @@ cat << \EOF | tee config.mak
 V = 1
 CFLAGS = %{build_cflags}
 LDFLAGS = %{build_ldflags}
-NEEDS_CRYPTO_WITH_SSL = 1
 USE_LIBPCRE = 1
 ETC_GITCONFIG = %{_sysconfdir}/gitconfig
 INSTALL_SYMLINKS = 1
 GITWEB_PROJECTROOT = %{_localstatedir}/lib/git
 GNU_ROFF = 1
 NO_PERL_CPAN_FALLBACKS = 1
+%if %{with python3}
+PYTHON_PATH = %{__python3}
+%else
 %if %{with python2}
 PYTHON_PATH = %{__python2}
 %else
 NO_PYTHON = 1
 %endif
-# endif with python2
+%endif
 %if %{with asciidoctor}
 USE_ASCIIDOCTOR = 1
 %endif
-# endif with asciidoctor
 htmldir = %{?_pkgdocdir}%{!?_pkgdocdir:%{_docdir}/%{name}-%{version}}
 prefix = %{_prefix}
 perllibdir = %{perl_vendorlib}
@@ -940,11 +948,13 @@ export GIT_SKIP_TESTS
 export LANG=en_US.UTF-8
 
 # Explicitly enable tests which may be skipped opportunistically
-# (Check for variables set via test_tristate in the test suite)
-export GIT_SVN_TEST_HTTPD=false
+# Check for variables set via test_bool_env in the test suite:
+#   git grep 'test_bool_env GIT_' -- t/{lib-,t[0-9]}*.sh |
+#       sed -r 's/.* (GIT_[^ ]+) .*/\1/g' | sort -u
 export GIT_TEST_GIT_DAEMON=true
 export GIT_TEST_HTTPD=false
 export GIT_TEST_SVNSERVE=true
+export GIT_TEST_SVN_HTTPD=false
 
 # Create tmpdir for test output and update GIT_TEST_OPTS
 # Also update GIT-BUILD-OPTIONS to keep make from any needless rebuilding
@@ -1020,7 +1030,6 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 
 %if %{with libsecret}
 %files credential-libsecret
-%defattr(-,root,root)
 %{gitexecdir}/git-credential-libsecret
 %endif
 # endif with libsecret
@@ -1125,6 +1134,54 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 %{?with_docs:%{_pkgdocdir}/git-svn.html}
 
 %changelog
+* Sun Jun 06 2021 Todd Zullinger <tmz@pobox.com> - 2.32.0-1
+- update to 2.32.0
+- add perl(File::Compare) BuildRequires
+- fix var to enable git-svn tests with httpd
+- remove %%changelog entries prior to 2019
+
+* Thu Jun 03 2021 Todd Zullinger <tmz@pobox.com> - 2.32.0-0.5.rc3
+- drop jgit on Fedora >= 35
+  Resolves: rhbz#1965808
+
+* Wed Jun 02 2021 Todd Zullinger <tmz@pobox.com> - 2.32.0-0.4.rc3
+- update to 2.32.0-rc3
+
+* Fri May 28 2021 Todd Zullinger <tmz@pobox.com> - 2.32.0-0.3.rc2
+- update to 2.32.0-rc2
+
+* Mon May 24 2021 Jitka Plesnikova <jplesnik@redhat.com> - 2.32.0-0.2.rc1
+- Perl 5.34 re-rebuild of bootstrapped packages
+
+* Sat May 22 2021 Todd Zullinger <tmz@pobox.com> - 2.32.0-0.1.rc1
+- update to 2.32.0-rc1
+- rearrange python2/python3 conditionals
+- re-enable git-p4 with python3
+- add coreutils BuildRequires
+- remove unneeded NEEDS_CRYPTO_WITH_SSL
+
+* Fri May 21 2021 Jitka Plesnikova <jplesnik@redhat.com> - 2.31.1-3.1
+- Perl 5.34 rebuild
+
+* Mon May 17 2021 Todd Zullinger <tmz@pobox.com> - 2.32.0-0.0.rc0
+- update to 2.32.0-rc0
+
+* Sun May 16 2021 Todd Zullinger <tmz@pobox.com>
+- clean up various dist conditionals
+
+* Wed Apr 21 2021 Todd Zullinger <tmz@pobox.com> - 2.31.1-3
+- apply upstream patch to fix clone --bare segfault
+  Resolves: rhbz#1952030
+
+* Tue Apr 06 2021 Todd Zullinger <tmz@pobox.com> - 2.31.1-2
+- remove two stray %%defattr macros from %%files sections
+
+* Sat Mar 27 2021 Todd Zullinger <tmz@pobox.com> - 2.31.1-1
+- update to 2.31.1
+
+* Fri Mar 19 2021 Todd Zullinger <tmz@pobox.com> - 2.31.0-2
+- fix git bisect with annotaged tags
+
 * Mon Mar 15 2021 Todd Zullinger <tmz@pobox.com> - 2.31.0-1
 - update to 2.31.0
 
@@ -1407,353 +1464,3 @@ rmdir --ignore-fail-on-non-empty "$testdir"
 
 * Thu Jan 31 2019 Fedora Release Engineering <releng@fedoraproject.org> - 2.20.1-1.1
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_30_Mass_Rebuild
-
-* Sat Dec 15 2018 Todd Zullinger <tmz@pobox.com> - 2.20.1-1
-- Update to 2.20.1
-
-* Sun Dec 09 2018 Todd Zullinger <tmz@pobox.com> - 2.20.0-1
-- Update to 2.20.0
-
-* Sat Dec 01 2018 Todd Zullinger <tmz@pobox.com> - 2.20.0-0.2.rc2
-- Update to 2.20.0.rc2
-
-* Wed Nov 21 2018 Todd Zullinger <tmz@pobox.com> - 2.20.0-0.1.rc1
-- Update to 2.20.0.rc1
-
-* Wed Nov 21 2018 Todd Zullinger <tmz@pobox.com> - 2.19.2-1
-- Update to 2.19.2
-
-* Tue Oct 23 2018 Todd Zullinger <tmz@pobox.com>
-- Skip test BuildRequires when --without tests is used
-- Simplify gpg verification of Source0
-- Use %%{without ...} macro consistently
-- Add comments to %%endif statements
-- Add glibc-langpack-en BuildRequires for en_US.UTF-8 locale
-
-* Mon Oct 22 2018 Pavel Cahyna <pcahyna@redhat.com> - 2.19.1-2
-- Update condition for the t5540-http-push-webdav test for future RHEL
-
-* Fri Oct 05 2018 Todd Zullinger <tmz@pobox.com> - 2.19.1-1
-- Update to 2.19.1 (CVE-2018-17456)
-
-* Mon Sep 10 2018 Todd Zullinger <tmz@pobox.com> - 2.19.0-1
-- Update to 2.19.0
-
-* Fri Sep 07 2018 Todd Zullinger <tmz@pobox.com> - 2.19.0-0.5.rc2
-- Fix smart-http test due to changes in cookie sort order in curl-7.61.1
-- Add --without tests option to skip tests
-
-* Thu Sep 06 2018 Sebastian Kisela <skisela@redhat.com> - 2.19.0-0.4.rc2
-- Move instaweb to a separate subpackage
-- Fix builds without docs and without cvs and/or p4
-
-* Tue Sep 04 2018 Todd Zullinger <tmz@pobox.com> - 2.19.0-0.3.rc2
-- Update to 2.19.0.rc2
-- Drop unnecessary Conflicts: when git-p4 is disabled
-- Obsolete git-cvs if it's disabled
-- Remove contrib/fast-import/import-zips.py, contrib/hg-to-git, and
-  contrib/svn-fe which all require python2
-- Drop git-gnome-keyring obsolete for fedora > 30
-
-* Tue Sep 04 2018 Nils Philippsen <nils@redhat.com> - 2.19.0-0.2.rc1
-- obsolete git-p4 if it's disabled
-
-* Tue Aug 28 2018 Todd Zullinger <tmz@pobox.com> - 2.19.0-0.1.rc1
-- Update to 2.19.0.rc1
-
-* Mon Aug 20 2018 Todd Zullinger <tmz@pobox.com> - 2.19.0-0.0.rc0
-- Update to 2.19.0.rc0
-
-* Mon Aug 20 2018 Todd Zullinger <tmz@pobox.com> - 2.18.0-2.5
-- Remove git-remote-testsvn, make git-svn noarch
-- Restore fixed contrib/credential/netrc tests
-
-* Fri Jul 13 2018 Fedora Release Engineering <releng@fedoraproject.org> - 2.18.0-2.4
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
-
-* Tue Jul 03 2018 Petr Pisar <ppisar@redhat.com> - 2.18.0-2.3
-- Perl 5.28 rebuild
-
-* Sun Jul 01 2018 Jitka Plesnikova <jplesnik@redhat.com> - 2.18.0-2.2
-- Perl 5.28 re-rebuild of bootstrapped packages
-
-* Fri Jun 29 2018 Jitka Plesnikova <jplesnik@redhat.com> - 2.18.0-2.1
-- Perl 5.28 rebuild
-
-* Mon Jun 25 2018 Pavel Cahyna <pcahyna@redhat.com> - 2.18.0-2
-- Fix build --without cvs
-
-* Wed Jun 20 2018 Todd Zullinger <tmz@pobox.com> - 2.18.0-1
-- Update to 2.18.0
-
-* Tue Jun 19 2018 Miro Hrončok <mhroncok@redhat.com> - 2.18.0-0.3.rc2
-- Rebuilt for Python 3.7
-
-* Wed Jun 13 2018 Todd Zullinger <tmz@pobox.com> - 2.18.0-0.2.rc2
-- Update to 2.18.0-rc2
-- Apply upstream zlib buffer handling patch (#1582555)
-
-* Wed Jun 06 2018 Todd Zullinger <tmz@pobox.com>
-- Include git-contacts, SubmittingPatches suggests it to users
-- Build git-subtree docs in %%build
-
-* Mon Jun 04 2018 Todd Zullinger <tmz@pobox.com> - 2.18.0-0.1.rc1
-- Update to 2.18.0-rc1
-- Drop flaky & out-of-place netrc credential helper tests
-
-* Fri Jun 01 2018 Todd Zullinger <tmz@pobox.com> - 2.18.0-0.0.rc0.1
-- add -p: fix counting empty context lines in edited patches
-
-* Wed May 30 2018 Todd Zullinger <tmz@pobox.com> - 2.18.0-0.0.rc0
-- Update to 2.18.0-rc0
-- Use new INSTALL_SYMLINKS setting
-
-* Wed May 30 2018 Todd Zullinger <tmz@pobox.com> - 2.17.1-3
-- Use %%apply_patch for aarch64 zlib patch, return to %%autosetup
-- Disable jgit tests on s390x, they're unreliable
-- Use %%make_build and %%make_install
-
-* Tue May 29 2018 Todd Zullinger <tmz@pobox.com> - 2.17.1-2
-- packfile: Correct zlib buffer handling (#1582555)
-
-* Tue May 29 2018 Todd Zullinger <tmz@pobox.com> - 2.17.1-1
-- Update to 2.17.1 (CVE-2018-11233, CVE-2018-11235)
-
-* Thu May 24 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-4
-- Fix segfault in rev-parse with invalid input (#1581678)
-- Move TEST_SHELL_PATH setting to config.mak
-
-* Mon Apr 16 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-3
-- Move linkcheck macro to existing fedora/rhel > 7 block
-- Re-enable t5000-tar-tree.sh test on f28
-
-* Fri Apr 13 2018 Pavel Cahyna <pcahyna@redhat.com>
-- Use BuildRequires: perl-interpreter per the packaging guidelines
-- Update conditions for future RHEL
-
-* Tue Apr 10 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-2
-- Require perl-generators on EL > 7
-
-* Mon Apr 09 2018 Todd Zullinger <tmz@pobox.com>
-- daemon: use --log-destination=stderr with systemd
-- daemon: fix condition for redirecting stderr
-- git-svn: avoid uninitialized value warning
-
-* Sun Apr 08 2018 Todd Zullinger <tmz@pobox.com>
-- Clean up redundant and unneeded Requires
-
-* Sat Apr 07 2018 Todd Zullinger <tmz@pobox.com>
-- Remove Git::LoadCPAN to ensure we use only system perl modules
-
-* Mon Apr 02 2018 Todd Zullinger <tmz@pobox.com>
-- Allow git-p4 subpackage to be toggled via --with/--without
-- Use %%bcond_(with|without) to enable/disable python3
-- Add support for disabling python2
-
-* Mon Apr 02 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-1
-- Update to 2.17.0
-
-* Wed Mar 28 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-0.2.rc2
-- Update to 2.17.0-rc2
-
-* Tue Mar 27 2018 Todd Zullinger <tmz@pobox.com>
-- Allow cvs subpackage to be toggled via --with/--without
-
-* Tue Mar 27 2018 Joe Orton <jorton@redhat.com>
-- Disable CVS support on EL > 7
-
-* Tue Mar 27 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-0.1.rc1.2
-- Add missing perl(Mail::Address) requirement (#1561086)
-
-* Thu Mar 22 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-0.1.rc1.1
-- Drop .py extension from contrib/hooks/multimail/git_multimail.py
-- Remove unnecessary "chmod +x contrib/hooks/*"
-
-* Wed Mar 21 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-0.1.rc1
-- Update to 2.17.0-rc1
-
-* Fri Mar 16 2018 Todd Zullinger <tmz@pobox.com>
-- Add findutils BuildRequires, improve 'find | xargs' calls
-
-* Thu Mar 15 2018 Todd Zullinger <tmz@pobox.com> - 2.17.0-0.0.rc0
-- Update to 2.17.0-rc0
-- Adjust for simplified perl install
-- Require git-core rather than git for git-daemon
-- Rename gitweb httpd config file
-- Install contrib/diff-highlight (#1550251)
-
-* Thu Mar 15 2018 Todd Zullinger <tmz@pobox.com>
-- Use symlinks instead of hardlinks for installed binaries
-
-* Fri Feb 23 2018 Todd Zullinger <tmz@pobox.com>
-- Improve hardening flags for EL-6 & EL-7
-
-* Fri Feb 16 2018 Todd Zullinger <tmz@pobox.com> - 2.16.2-1
-- Update to 2.16.2
-- Add gawk, gcc, make, and sed BuildRequires
-
-* Wed Feb 07 2018 Todd Zullinger <tmz@pobox.com> - 2.16.1-3
-- Order %%files and %%packages sections by name
-- Remove obsolete %%defattr
-- Don't package contrib/svn-fe in %%doc
-- Split git-subtree into a separate package
-
-* Wed Feb 07 2018 Fedora Release Engineering <releng@fedoraproject.org> - 2.16.1-2.1
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
-
-* Mon Jan 29 2018 Todd Zullinger <tmz@pobox.com> - 2.16.1-2
-- git-svn: avoid segfaults in 'git svn branch', re-enable t9128, t9141, and
-  t9167
-- Drop obsolete BuildRoot, Group, %%clean, and buildroot cleanup
-
-* Mon Jan 22 2018 Todd Zullinger <tmz@pobox.com> - 2.16.1-1
-- Update to 2.16.1
-- Avoid python dependency in git-core (#1536471)
-
-* Thu Jan 18 2018 Todd Zullinger <tmz@pobox.com> - 2.16.0-1
-- Update to 2.16.0
-- Use 'prove' as test harness, enable shell tracing
-- Disable t5000-tar-tree.sh on x86 in f28
-
-* Fri Jan 12 2018 Todd Zullinger <tmz@pobox.com>
-- Add %%{emacs_filesystem} to simplify emacs support
-- Use .in template for git@.service to ensure paths are substituted
-
-* Thu Jan 11 2018 Todd Zullinger <tmz@pobox.com>
-- Update BuildRequires for tests
-
-* Mon Jan 08 2018 Todd Zullinger <tmz@pobox.com>
-- Avoid excluding non-existent .py[co] files in %%doc
-- Remove obsolete gnome-keyring credential helper
-
-* Sun Jan 07 2018 Todd Zullinger <tmz@pobox.com>
-- Explicitly enable tests which may be skipped opportunistically
-
-* Sat Dec 30 2017 Todd Zullinger <tmz@pobox.com>
-- Fix perl requires filtering on EL-6
-
-* Thu Nov 30 2017 Todd Zullinger <tmz@pobox.com> - 2.15.1-3
-- Include verbose logs in build output for 'make test' failures
-- Use %%autosetup macro to unpack and patch source
-- Remove second make invocation for doc build/install
-- Fix builds using '--without docs'
-- Mark git-core-docs sub-package noarch
-- Avoid failures in svnserve tests when run in parallel
-- Run tests in parallel by default on Fedora
-- Skip 'git svn branch' tests which fail intermittently
-- Re-enable grep tests on s390x
-
-* Wed Nov 29 2017 Todd Zullinger <tmz@pobox.com> - 2.15.1-2
-- Fix debuginfo for gnome-keyring and libsecret credential helpers
-
-* Tue Nov 28 2017 Todd Zullinger <tmz@pobox.com> - 2.15.1-1
-- Update to 2.15.1
-
-* Tue Nov 21 2017 Todd Zullinger <tmz@pobox.com>
-- Add tcl/tk BuildRequires
-- Enable support for release candidate builds
-
-* Tue Nov 07 2017 Todd Zullinger <tmz@pobox.com> - 2.15.0-2
-- Fix git-clone memory exhaustion (CVE-2017-15298)
-  Resolves: #1510455, #1510457
-- Disable cross-directory hardlinks
-- Drop ancient obsoletes for git and git-arch
-- Update summary/description of numerous subpackages
-- Fix shebang in a few places to silence rpmlint complaints
-- Fix t9020-remote-svn failure when setting PYTHON_PATH
-- Rename %%gitcoredir to %%gitexecdir; upstream uses the latter
-- Move commands which no longer require perl into git-core
-- Move filter-branch out of core, it needs perl now
-- Improve test suite coverage
-
-* Mon Oct 30 2017 Todd Zullinger <tmz@pobox.com> - 2.15.0-1
-- Update to 2.15.0
-
-* Mon Oct 23 2017 Todd Zullinger <tmz@pobox.com> - 2.14.3-1
-- Update to 2.14.3
-
-* Tue Sep 26 2017 Todd Zullinger <tmz@pobox.com> - 2.14.2-2
-- Update to 2.14.2
-
-* Thu Aug 10 2017 Todd Zullinger <tmz@pobox.com> - 2.14.1-2
-- Rebuild for rpm-4.14 bug (#1480407)
-
-* Thu Aug 10 2017 Todd Zullinger <tmz@pobox.com> - 2.14.1-1
-- Update to 2.14.1 (resolves CVE-2017-1000117)
-
-* Tue Aug 08 2017 Iryna Shcherbina <ishcherb@redhat.com> - 2.14.0-2
-- Add a build-time dependency on python2-devel for p4
-  Resolves: #1479713
-- Skip all grep tests on s390x for now because it failes intermittently
-
-* Fri Aug 04 2017 Todd Zullinger <tmz@pobox.com> - 2.14.0-1
-- Update to 2.14.0
-- Use pcre2 library
-- git-p4: explicitly require python2
-
-* Tue Aug 01 2017 Todd Zullinger <tmz@pobox.com> - 2.13.4-1
-- Update to 2.13.4
-- Remove EL-5 and old Fedora conditionals
-
-* Sun Jul 30 2017 Florian Weimer <fweimer@redhat.com> - 2.13.3-3
-- Rebuild with binutils fix for ppc64le (#1475636)
-
-* Thu Jul 20 2017 Petr Stodulka <pstodulk@redhat.com> - 2.13.3-2
-- Move documentation files from all subpackages into the %%{_pkgdocdir}
-  directory, so links inside doc and man files are correct
-  Resolves: #1357438
-- Quiet a few rpmlint complaints regarding hidden files in contrib dir
-- Remove explicit libcurl requirement from git-core
-
-* Thu Jul 13 2017 Gwyn Ciesla <limburgher@gmail.com> - 2.13.3-1
-- Update to 2.13.3
-
-* Sun Jun 25 2017 Todd Zullinger <tmz@pobox.com> - 2.13.2-1
-- Update to 2.13.2
-- Skip grep tests which fail intermittently on s390x
-
-* Wed Jun 07 2017 Jitka Plesnikova <jplesnik@redhat.com> - 2.13.1-2
-- Perl 5.26 re-rebuild of bootstrapped packages
-
-* Mon Jun 05 2017 Todd Zullinger <tmz@pobox.com> - 2.13.1-1
-- Update to 2.13.1
-
-* Sun Jun 04 2017 Jitka Plesnikova <jplesnik@redhat.com> - 2.13.0-3
-- Perl 5.26 rebuild
-
-* Wed May 17 2017 Todd Zullinger <tmz@pobox.com> - 2.13.0-2
-- Use default, collision-detecting SHA1 implementation
-
-* Tue May 09 2017 Todd Zullinger <tmz@pobox.com> - 2.13.0-1
-- Update to 2.13.0 (resolves CVE-2017-8386)
-
-* Wed Mar 29 2017 Gwyn Ciesla <limburgher@gmail.com> - 2.12.2-1
-- Update to 2.12.2
-
-* Tue Mar 21 2017 Gwyn Ciesla <limburgher@gmail.com> - 2.12.1-1
-- Update to 2.12.1
-
-* Mon Feb 27 2017 Jon Ciesla <limburgher@gmail.com> - 2.12.0-1
-- Update to 2.12.0
-
-* Fri Feb 17 2017 Petr Stodulka <pstodulk@redhat.com> - 2.11.1-3
-- remove non-ASCII characters from description and title of packages
-- fix requiremets
-- fix spec to be compatible for other systems
-- remove deprecated credential-gnome-keyring
-
-* Fri Feb 17 2017 Todd Zullinger <tmz@pobox.com> - 2.11.1-3
-- Remove unnecessary rsync requirement from git-core
-- Move gnome-keyring credential helper from git-core to git
-- Enable libsecret credential helper
-- Run git test suite
-- Use %%{_mandir} in git/git-core file list filters
-- Fix version of emacs-git and emacs-git-el provides
-- Clean up contrib/{credential,subtree} to avoid cruft in git-core-doc
-- Fix a number of macro-in-comment warnings from rpmlint
-
-* Fri Feb 10 2017 Fedora Release Engineering <releng@fedoraproject.org> - 2.11.1-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
-
-* Fri Feb 03 2017 Jon Ciesla <limburgher@gmail.com> - 2.11.1-1
-- Update to 2.11.1
